@@ -85,6 +85,6 @@ class LogitNormalDecoder(nn.Module):
         return self
 
     def log_prob(self, x):
-        logit_x = torch.log(x / (1 - x))
+        logit_x = torch.log(x / (1 - x) + 1e-5)
         log_norm_prob = self.normal.log_prob(logit_x)
-        return log_norm_prob - torch.log(x / (1 - x))
+        return log_norm_prob - torch.log(x*(1 - x))
