@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import random
 
 class PlanarFlow(nn.Module):
     """
@@ -39,3 +39,31 @@ class PlanarFlow(nn.Module):
         z = z + a.mm(u_h.t())
 
         return z, logp
+
+class RadialFlow(nn.Module):
+    def __init__(self, z_dim=2):
+        super(RadialFlow, self).__init__()
+
+        self.z_dim = z_dim
+        self.m = nn.Softplus()
+
+        #?
+        self.beta = nn.init.xavier_normal_(nn.Parameter(torch.empty([1, 1])))
+        self.alpha = nn.init.xavier_normal_(nn.Parameter(torch.empty([1, 1])))
+        self.z0 = nn.init.uniform_(nn.Parameter(torch.empty([z_dim, 1])), a = 1e-1, b = 1)
+        
+    def forward(self, z, logp):
+        diff = z - self.z0
+        r = abs(diff)
+        h = 1/(self.alpha + r) #dim of one single z
+        beta = -self.alpha + self.m(self.beta)
+        z = z + beta * torch.mm(h, diff)
+
+        first = 1 + beta*self.h
+        h_ = self.h ##to-do, mm or *?
+        second = beta * torch.mm(h_, r)
+        det = torch.mm(first, (first + second)) ##to-do, what does the d-1 mean?
+        logp = logp - torch.log(det)
+        return z, logp
+
+        #to-do: test
