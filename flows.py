@@ -3,6 +3,8 @@ import torch.nn as nn
 import random
 import numpy as np
 
+# consulted https://github.com/VincentStimper/normalizing-flows/blob/master/normflow/flows/radial.py
+
 class PlanarFlow(nn.Module):
     def __init__(self, z_dim=2):
         super(PlanarFlow, self).__init__()
