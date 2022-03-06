@@ -3,11 +3,6 @@ import torch.nn as nn
 import random
 
 class PlanarFlow(nn.Module):
-    """
-    Planar flow transformation, described in equations (10) - (12), (21) - (23) in https://arxiv.org/pdf/1505.05770.pdf
-    We use tanh activation (h) function.
-    """
-
     def __init__(self, z_dim=2):
         super(PlanarFlow, self).__init__()
 
@@ -20,23 +15,15 @@ class PlanarFlow(nn.Module):
         self.b = nn.init.xavier_normal_(nn.Parameter(torch.empty([1, 1])))
 
     def forward(self, z, logp):
-        """
-        Given a set of samples z and their respective log probabilities, returns
-        z' = f(z) and log p(z'), as described by the equations in the paper.
-        Sizes should be (L, z_dim) and (L), respectively.
-        Outputs are the same size as the inputs.
-        """
-
         a = self.h(torch.mm(z, self.w) + self.b)
-        psi = (1 - a ** 2).mm(self.w.t())  # derivative of tanh(x) is 1 - tanh^2(x)
+        dt = (1 - a ** 2).mm(self.w.T)
 
-        # see end of section A.1
-        x = self.w.t().mm(self.u)
+        x = self.w.T.mm(self.u)
         m = -1 + self.m(x)
-        u_h = self.u + (m - x) * self.w / (self.w.t().mm(self.w))
+        u_h = self.u + (m - x) * self.w / (self.w.T.mm(self.w))
 
-        logp = logp - torch.log(torch.abs(1 + psi.mm(u_h).squeeze()) + 1e-7)
-        z = z + a.mm(u_h.t())
+        logp = logp - torch.log(torch.abs(1 + dt.mm(u_h).squeeze()) + 1e-7)
+        z = z + a.mm(u_h.T)
 
         return z, logp
 
@@ -47,23 +34,32 @@ class RadialFlow(nn.Module):
         self.z_dim = z_dim
         self.m = nn.Softplus()
 
-        #?
         self.beta = nn.init.xavier_normal_(nn.Parameter(torch.empty([1, 1])))
         self.alpha = nn.init.xavier_normal_(nn.Parameter(torch.empty([1, 1])))
-        self.z0 = nn.init.uniform_(nn.Parameter(torch.empty([z_dim, 1])), a = 1e-1, b = 1)
+    
+    def getF(self, z):
+        self.z0 = torch.empty(z.shape)
+        self.z0 = nn.init.uniform_(self.z0, a = 1, b = 2)
+        diff = z - self.z0
+        self.r = abs(diff)
+        self.h = 1/(self.alpha + self.r)
+        self.newbeta = -self.alpha + self.m(self.beta)
+        z = z + self.newbeta * torch.mul(self.h, diff)
+        return z
+    
+    def getH(self, z):
+        return 1/(self.alpha.detach().numpy() + abs(z - self.z0.detach().numpy()))
         
     def forward(self, z, logp):
-        diff = z - self.z0
-        r = abs(diff)
-        h = 1/(self.alpha + r) #dim of one single z
-        beta = -self.alpha + self.m(self.beta)
-        z = z + beta * torch.mm(h, diff)
+        newZ = self.getF(z)
+        
+        bh1 = self.newbeta * self.h + 1
+        
+        hf = elementwise_grad(self.getH)
+        h_ =  torch.from_numpy(hf(z.detach().numpy())).float()
 
-        first = 1 + beta*self.h
-        h_ = self.h ##to-do, mm or *?
-        second = beta * torch.mm(h_, r)
-        det = torch.mm(first, (first + second)) ##to-do, what does the d-1 mean?
-        logp = logp - torch.log(det)
-        return z, logp
-
-        #to-do: test
+        det = torch.mm(bh1 ** (self.z_dim - 1), \
+                        (bh1 + self.newbeta * h_ * self.r).T)
+        
+        logp = logp - torch.log(det + 1e-7)
+        return newZ, logp
