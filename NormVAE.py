@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.distributions import Normal, Bernoulli
 from torch.distributions.kl import kl_divergence
 import numpy as np
-
+import os
 
 class FlowVAE(nn.Module):
     def __init__(self, img_size, dim_h, dim_z, decoder, flows=None):
@@ -62,6 +62,16 @@ class FlowVAE(nn.Module):
             out = self.decoder(z).probs
             out = out.reshape(-1, self.img_size[0], self.img_size[1], self.img_size[2])
         return out
+
+    def save_model(self, save_path, epoch):
+        if not os.path.exists(save_path): os.makedirs(save_path)
+        torch.save(self.state_dict(), os.path.join(save_path, 'model_' + str(epoch) + '.pth'))
+        print('Save Model to ' + save_path)
+
+    def load_model(self, load_path, epoch):
+        if not os.path.exists(load_path): return
+        self.load_state_dict(torch.load(os.path.join(load_path, 'model_' + str(epoch) + '.pth')))
+        print('Load Model from ' + load_path)
 
 
 class BernoulliDecoder(nn.Module):
