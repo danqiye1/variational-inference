@@ -1,15 +1,18 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Normal, Bernoulli
+from torch.distributions.kl import kl_divergence
 import numpy as np
 
+
 class FlowVAE(nn.Module):
-    def __init__(self, img_size, dim_h, dim_z, flows, decoder):
+    def __init__(self, img_size, dim_h, dim_z, decoder, flows=None):
         """
         normalizing flow model
         :param img_size: shape of the image
         :param dim_h: dimension of hidden states
         :param dim_z: dimension of latent variable
+        :param decoder: decoder [BernoulliDecoder, LogitNormalDecoder]
         :param flows: Flows to transform output of base encoder
         """
         super().__init__()
@@ -20,7 +23,7 @@ class FlowVAE(nn.Module):
         self.mu = nn.Linear(dim_h, dim_z)
         self.var = nn.Linear(dim_h, dim_z)
 
-        self.flows = nn.ModuleList(flows)
+        self.flows = nn.ModuleList(flows) if flows else None
         self.decoder = decoder
 
     def forward(self, x):
@@ -37,13 +40,17 @@ class FlowVAE(nn.Module):
         sigma = torch.exp(0.5 * log_var)
         z = mu + torch.randn_like(mu) * sigma
         q = Normal(mu, sigma)
-        logq = q.log_prob(z)
 
-        logp = -0.5 * torch.sum(2 * torch.log(sigma) + np.log(2 * np.pi) + ((z - mu) / sigma) ** 2, dim=1)
-        for flow in self.flows:
-            z, logp = flow(z, logp)
+        if self.flows:
+            logq = q.log_prob(z)
+            logq_k = -0.5 * torch.sum(2 * torch.log(sigma) + np.log(2 * np.pi) + ((z - mu) / sigma) ** 2, dim=1)
+            for flow in self.flows:
+                z, logq_k = flow(z, logq_k)
+            kl = - torch.sum(self.prior.log_prob(z), dim=-1) + torch.sum(logq, dim=-1) - logq_k
+        else:
+            # standard VAE
+            kl = kl_divergence(q, self.prior)
 
-        kl = - torch.sum(self.prior.log_prob(z), dim=-1) + torch.sum(logq, dim=-1) - logp
         # likelihood
         likelihood = self.decoder(z)
         return likelihood, kl
