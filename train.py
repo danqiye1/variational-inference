@@ -11,9 +11,12 @@ from NormVAE import FlowVAE, BernoulliDecoder, LogitNormalDecoder
 def prepare_dataset(dataset_name, batch_size, train=True):
     data = {
         'mnist': datasets.MNIST('datasets', train=train, download=True, transform=transforms.Compose([transforms.ToTensor(), lambda x: (x > 0.5).type(x.type())])),
-        'cifar10': datasets.CIFAR10('datasets', train=train, download=True, transform=transforms.Compose(
-            # ToTensor will
-        [transforms.RandomCrop([8, 8]), transforms.ToTensor(), lambda x: (0.999 - 0.001) * x + 0.001]))
+        'cifar10': datasets.CIFAR10(
+            'datasets', train=train, download=True, transform=transforms.Compose(
+                #[transforms.RandomCrop([8, 8]), transforms.ToTensor(), lambda x: (0.999 - 0.001) * x + 0.001]
+                [transforms.ToTensor(), lambda x: (0.999 - 0.001) * x + 0.001]
+            )
+        )
     }
     dataloader = torch.utils.data.DataLoader(data[dataset_name], batch_size=batch_size, shuffle=train)
     return dataloader
@@ -71,8 +74,8 @@ def test(model, dataset_name, load_epoch):
 
 if __name__ == '__main__':
     num_epoch = 100
-    dataset_name = 'mnist'  # 'cifar10'
-    img_size = [1, 28, 28] if dataset_name == 'mnist' else [3, 8, 8]
+    dataset_name = 'cifar10'
+    img_size = [1, 28, 28] if dataset_name == 'mnist' else [3, 32, 32]
     batch_size = 256
     num_flow = 10
     dim_z = 40
