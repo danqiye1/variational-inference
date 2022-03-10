@@ -48,13 +48,14 @@ class RadialFlow(nn.Module):
     def forward(self, z: torch.Tensor, logp):
         # (z - z0)
         z_sub = z - self.z0
-        alpha = torch.exp(self.alpha)
+        alpha = torch.abs(self.alpha)
+        beta = torch.log(1 + torch.exp(self.beta)) - alpha
         r = torch.linalg.norm(z_sub, dim=1)
         # As shown at the end of section A.2
         h = 1 / (alpha + r)
 
         # f(z) = z + beta * h(alpha, r) * (z - z_0)
-        f_z = z + self.beta * h.unsqueeze(1) * z_sub
+        f_z = z + beta * h.unsqueeze(1) * z_sub
         # Formula as shown at the end of section A.2:  - self.beta * r / (alpha + r) ** 2
-        logp -= (((self.z_dim - 1) * torch.log(1 + self.beta * h) + torch.log(1 + self.beta * h - self.beta * r / (alpha + r) ** 2)))
+        logp -= (((self.z_dim - 1) * torch.log(1 + beta * h) + torch.log(1 + beta * h - beta * r / (alpha + r) ** 2)))
         return f_z, logp
