@@ -38,7 +38,7 @@ class FlowVAE(nn.Module):
 
         # reparameterization
         sigma = torch.exp(0.5 * log_var)
-        z = mu + torch.randn_like(mu) * sigma
+        z = (mu + torch.randn_like(mu) * sigma) if self.training else mu
         q = Normal(mu, sigma)
 
         if self.flows:
