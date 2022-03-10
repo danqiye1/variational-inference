@@ -56,9 +56,9 @@ def train(model, dataset_name, beta=1, device='cpu', num_epoch=10):
     return model
 
 
-def test(model, dataset_name, load_epoch):
+def test(model, dataset_name, batch_size, epoch):
     dataloader = prepare_dataset(dataset_name, batch_size, train=False)
-    model.load_model(save_path=save_path, epoch=load_epoch)
+    model.load_model(f"checkpoint/{dataset_name}", epoch)
     model.eval()
     t = tqdm(enumerate(dataloader), total=len(dataloader))
     recon_loss = []
