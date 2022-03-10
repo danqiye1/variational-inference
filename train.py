@@ -1,4 +1,5 @@
 import os
+import argparse
 import torch
 from flows import PlanarFlow
 from torchvision import datasets, transforms
@@ -22,7 +23,7 @@ def prepare_dataset(dataset_name, batch_size, train=True):
     return dataloader
 
 
-def train(model, dataset_name, beta=1, device='cpu'):
+def train(model, dataset_name, beta=1, device='cpu', num_epoch=10):
     dataloader = prepare_dataset(dataset_name, batch_size)
     model = model.to(device)
     model.train()
@@ -73,25 +74,33 @@ def test(model, dataset_name, load_epoch):
     return np.array(recon_loss).mean(), np.array(kl_loss).mean()
 
 if __name__ == '__main__':
-    num_epoch = 100
-    dataset_name = 'cifar10'
-    img_size = [1, 28, 28] if dataset_name == 'mnist' else [3, 32, 32]
+
+    # Argument parser
+    parser = argparse.ArgumentParser(description="Normalizing Flow VAE")
+    parser.add_argument("--dataset", '-d', dest="dataset_name", default="mnist", type=str)
+    parser.add_argument("--numflows", '-k', dest="num_flows", default=10, type=int)
+    parser.add_argument("--epochs", '-e', dest="num_epoch", default=10, type=int)
+    parser.add_argument("--beta", '-b', dest="beta", default=1, type=float)
+    args = parser.parse_args()
+
+    # Input checking
+    assert args.dataset_name in ("mnist", "cifar10"), f"{args.dataset_name} is not valid dataset. Must be mnist or cifar10."
+
+    # Static hyperparameters
     batch_size = 256
-    num_flow = 10
     dim_z = 40
     dim_h = 256
-    save_path = os.path.join('./checkpoint', dataset_name)
     save_frequency = 2
     beta = 1  # assign beta
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if dataset_name == 'mnist':
-        decoder = BernoulliDecoder(img_size, dim_z, dim_h)
-    elif dataset_name == 'cifar10':
-        decoder = LogitNormalDecoder(img_size, dim_z, dim_h)
+    # Derived hyperparameters
+    img_size = [1, 28, 28] if args.dataset_name == 'mnist' else [3, 32, 32]
+    save_path = os.path.join('./checkpoint', args.dataset_name)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    decoder = BernoulliDecoder(img_size, dim_z, dim_h) if args.dataset_name == "mnist" else LogitNormalDecoder(img_size, dim_z, dim_h)
 
     # assign flows if None, use standard VAE
-    flows = [PlanarFlow(dim_z) for _ in range(num_flow)]
+    flows = [PlanarFlow(dim_z) for _ in range(args.num_flows)]
 
-    model = FlowVAE(img_size, dim_h, dim_z, decoder)
-    train(model, dataset_name, beta, device)
+    model = FlowVAE(img_size, dim_h, dim_z, decoder, flows)
+    train(model, args.dataset_name, beta, device, num_epoch=args.num_epoch)
