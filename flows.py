@@ -3,6 +3,8 @@ import torch.nn as nn
 import random
 import numpy as np
 
+from pdb import set_trace as bp
+
 # consulted https://github.com/VincentStimper/normalizing-flows/blob/master/normflow/flows/radial.py
 
 class PlanarFlow(nn.Module):
@@ -47,12 +49,12 @@ class RadialFlow(nn.Module):
         # (z - z0)
         z_sub = z - self.z0
         alpha = torch.exp(self.alpha)
-        r = torch.norm(z_sub)
+        r = torch.linalg.norm(z_sub, dim=1)
         # As shown at the end of section A.2
         h = 1 / (alpha + r)
-        
+
         # f(z) = z + beta * h(alpha, r) * (z - z_0)
-        f_z = z + self.beta * h * z_sub
+        f_z = z + self.beta * h.unsqueeze(1) * z_sub
         # Formula as shown at the end of section A.2:  - self.beta * r / (alpha + r) ** 2
-        logp = (((self.z_dim - 1) * torch.log(1 + self.beta * h) + torch.log(1 + self.beta * h - self.beta * r / (alpha + r) ** 2)))
+        logp -= (((self.z_dim - 1) * torch.log(1 + self.beta * h) + torch.log(1 + self.beta * h - self.beta * r / (alpha + r) ** 2)))
         return f_z, logp
