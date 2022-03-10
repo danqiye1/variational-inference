@@ -5,6 +5,7 @@ from flows import PlanarFlow
 from torchvision import datasets, transforms
 from tqdm import tqdm
 import torch.optim as optim
+from torch.distributions import MultivariateNormal
 import numpy as np
 from NormVAE import FlowVAE, BernoulliDecoder, LogitNormalDecoder
 
@@ -46,8 +47,8 @@ def train(model, dataset_name, beta=1, device='cpu', num_epoch=10):
             max_ln_loss_ = max([val.sum() for val in -likelihood.log_prob(x)])
             min_kl_loss_ = kl.min()
             max_kl_loss_ = kl.max()
-            t.set_description("Recon loss %f (min-max %f %f), KL %f (min-max %f %f)" %
-                              (recon_loss_, min_ln_loss_, max_ln_loss_,
+            t.set_description("Epoch %d, Recon loss %.3f (min-max %.3f %.3f), KL %.3f (min-max %.3f %.3f)" %
+                              (epoch, recon_loss_, min_ln_loss_, max_ln_loss_,
                                kl_loss_, min_kl_loss_, max_kl_loss_))
             optimizer.step()
 
@@ -55,10 +56,35 @@ def train(model, dataset_name, beta=1, device='cpu', num_epoch=10):
             model.save_model(save_path=save_path, epoch=epoch)
     return model
 
+def train_energy(U, model, z_dim=2, batch_size=512, iteration=5000):
+    """ Function for training on energy densities """
 
-def test(model, dataset_name, batch_size, epoch):
+    optimizer = optim.Adam(model.parameters(), lr = 0.001)
+
+    t = tqdm(range(iteration))
+    for it in t:
+        optimizer.zero_grad()
+
+        # prior
+        prior = MultivariateNormal(torch.zeros(z_dim), torch.eye(z_dim))
+        z = prior.rsample([batch_size])
+        logq = prior.log_prob(z)
+
+        for flow in model:
+            z, logq = flow(z, logq)
+
+        U_z = U(z)
+        loss = torch.mean(U_z + logq)
+        loss.backward()
+        t.set_description("Loss %f" % loss)
+
+        optimizer.step()
+    return model
+
+
+def test(model, dataset_name, num_flows, batch_size, epoch):
     dataloader = prepare_dataset(dataset_name, batch_size, train=False)
-    model.load_model(f"checkpoint/{dataset_name}", epoch)
+    model.load_model(f"checkpoint/{dataset_name}/{num_flows}", epoch)
     model.eval()
     t = tqdm(enumerate(dataloader), total=len(dataloader))
     recon_loss = []
@@ -95,7 +121,7 @@ if __name__ == '__main__':
 
     # Derived hyperparameters
     img_size = [1, 28, 28] if args.dataset_name == 'mnist' else [3, 32, 32]
-    save_path = os.path.join('./checkpoint', args.dataset_name)
+    save_path = os.path.join('./checkpoint', f'{args.dataset_name}/{args.num_flows}')
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     decoder = BernoulliDecoder(img_size, dim_z, dim_h) if args.dataset_name == "mnist" else LogitNormalDecoder(img_size, dim_z, dim_h)
 
