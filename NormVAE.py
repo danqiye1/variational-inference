@@ -55,9 +55,9 @@ class FlowVAE(nn.Module):
         likelihood = self.decoder(z)
         return likelihood, kl
 
-    def sample_img(self):
+    def sample_img(self, deterministic=False):
         with torch.no_grad():
-            z = torch.randn(1, self.dim_z)
+            z = torch.zeros(1, self.dim_z) if deterministic else torch.randn(1, self.dim_z)
             # The attribute probs is a little weird as we have to use it in Bernoulli. We desgin the variable of same name for LogitNormal
             out = self.decoder(z).probs
             out = out.reshape(-1, self.img_size[0], self.img_size[1], self.img_size[2])
@@ -68,9 +68,9 @@ class FlowVAE(nn.Module):
         torch.save(self.state_dict(), os.path.join(save_path, 'model_' + str(epoch) + '.pth'))
         print('Save Model to ' + save_path)
 
-    def load_model(self, load_path, epoch):
+    def load_model(self, load_path, epoch, device="cpu"):
         if not os.path.exists(load_path): return
-        self.load_state_dict(torch.load(os.path.join(load_path, 'model_' + str(epoch) + '.pth')))
+        self.load_state_dict(torch.load(os.path.join(load_path, 'model_' + str(epoch) + '.pth'), map_location=device))
         print('Load Model from ' + load_path)
 
 

@@ -82,9 +82,9 @@ def train_energy(U, model, z_dim=2, batch_size=512, iteration=5000):
     return model
 
 
-def test(model, dataset_name, num_flows, batch_size, epoch):
+def test(model, dataset_name, num_flows, batch_size, epoch, beta=1.0):
     dataloader = prepare_dataset(dataset_name, batch_size, train=False)
-    model.load_model(f"checkpoint/{dataset_name}/{num_flows}", epoch)
+    model.load_model(f"checkpoint/{dataset_name}/{num_flows}/{beta}", epoch)
     model.eval()
     t = tqdm(enumerate(dataloader), total=len(dataloader))
     recon_loss = []
