@@ -117,11 +117,10 @@ if __name__ == '__main__':
     dim_z = 40
     dim_h = 256
     save_frequency = 2
-    beta = 1  # assign beta
 
     # Derived hyperparameters
     img_size = [1, 28, 28] if args.dataset_name == 'mnist' else [3, 32, 32]
-    save_path = os.path.join('./checkpoint', f'{args.dataset_name}/{args.num_flows}')
+    save_path = os.path.join('./checkpoint', f'{args.dataset_name}/{args.num_flows}/{args.beta}')
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     decoder = BernoulliDecoder(img_size, dim_z, dim_h) if args.dataset_name == "mnist" else LogitNormalDecoder(img_size, dim_z, dim_h)
 
@@ -129,4 +128,4 @@ if __name__ == '__main__':
     flows = [PlanarFlow(dim_z) for _ in range(args.num_flows)]
 
     model = FlowVAE(img_size, dim_h, dim_z, decoder, flows)
-    train(model, args.dataset_name, beta, device, num_epoch=args.num_epoch)
+    train(model, args.dataset_name, args.beta, device, num_epoch=args.num_epoch)
