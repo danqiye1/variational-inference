@@ -3,6 +3,8 @@ import torch.nn as nn
 import random
 import numpy as np
 
+from pdb import set_trace as bp
+
 # consulted https://github.com/VincentStimper/normalizing-flows/blob/master/normflow/flows/radial.py
 
 class PlanarFlow(nn.Module):
@@ -31,24 +33,29 @@ class PlanarFlow(nn.Module):
         return z, logp
 
 class RadialFlow(nn.Module):
+    '''
+    f(z) = z + beta * h(alpha, r) * (z - z_0)
+    '''
     def __init__(self, z_dim=2):
-        super(RadialFlow, self).__init__()
-        self.d_cpu = torch.prod(torch.tensor(z_dim))
-        self.register_buffer('d', self.d_cpu)
-        self.beta = nn.Parameter(torch.empty(1))
-        lim = 1.0 / np.prod(z_dim)
-        nn.init.uniform_(self.beta, -lim - 1.0, lim - 1.0)
-        self.alpha = nn.Parameter(torch.empty(1))
-        nn.init.uniform_(self.alpha, -lim, lim)
+        super().__init__()
+        
+        self.z_dim = z_dim
+        self.z0 = nn.init.normal_(nn.Parameter(torch.empty(z_dim)))
+        self.alpha = nn.init.normal_(nn.Parameter(torch.empty(1)))
+        self.beta = nn.init.normal_(nn.Parameter(torch.empty(1)))
+        
 
-        self.z_0 = nn.Parameter(torch.randn(z_dim)[None])
+    def forward(self, z: torch.Tensor, logp):
+        # (z - z0)
+        z_sub = z - self.z0
+        alpha = torch.abs(self.alpha)
+        beta = torch.log(1 + torch.exp(self.beta)) - alpha
+        r = torch.linalg.norm(z_sub, dim=1)
+        # As shown at the end of section A.2
+        h = 1 / (alpha + r)
 
-    def forward(self, z):
-        beta = torch.log(1 + torch.exp(self.beta)) - torch.abs(self.alpha)
-        dz = z - self.z_0
-        r = torch.norm(dz, dim=list(range(1, self.z_0.dim())))
-        h_arr = beta / (torch.abs(self.alpha) + r)
-        h_arr_ = - beta * r / (torch.abs(self.alpha) + r) ** 2
-        z_ = z + h_arr.unsqueeze(1) * dz
-        log_det = (self.d - 1) * torch.log(1 + h_arr) + torch.log(1 + h_arr + h_arr_)
-        return z_, log_det
+        # f(z) = z + beta * h(alpha, r) * (z - z_0)
+        f_z = z + beta * h.unsqueeze(1) * z_sub
+        # Formula as shown at the end of section A.2:  - self.beta * r / (alpha + r) ** 2
+        logp -= (((self.z_dim - 1) * torch.log(1 + beta * h) + torch.log(1 + beta * h - beta * r / (alpha + r) ** 2)))
+        return f_z, logp

@@ -1,15 +1,18 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Normal, Bernoulli
+from torch.distributions.kl import kl_divergence
 import numpy as np
+import os
 
 class FlowVAE(nn.Module):
-    def __init__(self, img_size, dim_h, dim_z, flows, decoder):
+    def __init__(self, img_size, dim_h, dim_z, decoder, flows=None):
         """
         normalizing flow model
         :param img_size: shape of the image
         :param dim_h: dimension of hidden states
         :param dim_z: dimension of latent variable
+        :param decoder: decoder [BernoulliDecoder, LogitNormalDecoder]
         :param flows: Flows to transform output of base encoder
         """
         super().__init__()
@@ -20,7 +23,7 @@ class FlowVAE(nn.Module):
         self.mu = nn.Linear(dim_h, dim_z)
         self.var = nn.Linear(dim_h, dim_z)
 
-        self.flows = nn.ModuleList(flows)
+        self.flows = nn.ModuleList(flows) if flows else None
         self.decoder = decoder
 
     def forward(self, x):
@@ -35,26 +38,40 @@ class FlowVAE(nn.Module):
 
         # reparameterization
         sigma = torch.exp(0.5 * log_var)
-        z = mu + torch.randn_like(mu) * sigma
+        z = (mu + torch.randn_like(mu) * sigma) if self.training else mu
         q = Normal(mu, sigma)
-        logq = q.log_prob(z)
 
-        logp = -0.5 * torch.sum(2 * torch.log(sigma) + np.log(2 * np.pi) + ((z - mu) / sigma) ** 2, dim=1)
-        for flow in self.flows:
-            z, logp = flow(z, logp)
+        if self.flows:
+            logq = q.log_prob(z)
+            logq_k = -0.5 * torch.sum(2 * torch.log(sigma) + np.log(2 * np.pi) + ((z - mu) / sigma) ** 2, dim=1)
+            for flow in self.flows:
+                z, logq_k = flow(z, logq_k)
+            kl = - torch.sum(self.prior.log_prob(z), dim=-1) + torch.sum(logq, dim=-1) - logq_k
+        else:
+            # standard VAE
+            kl = kl_divergence(q, self.prior)
 
-        kl = - torch.sum(self.prior.log_prob(z), dim=-1) + torch.sum(logq, dim=-1) - logp
         # likelihood
         likelihood = self.decoder(z)
         return likelihood, kl
 
-    def sample_img(self):
+    def sample_img(self, deterministic=False):
         with torch.no_grad():
-            z = torch.randn(1, self.dim_z)
+            z = torch.zeros(1, self.dim_z) if deterministic else torch.randn(1, self.dim_z)
             # The attribute probs is a little weird as we have to use it in Bernoulli. We desgin the variable of same name for LogitNormal
             out = self.decoder(z).probs
             out = out.reshape(-1, self.img_size[0], self.img_size[1], self.img_size[2])
         return out
+
+    def save_model(self, save_path, epoch):
+        if not os.path.exists(save_path): os.makedirs(save_path)
+        torch.save(self.state_dict(), os.path.join(save_path, 'model_' + str(epoch) + '.pth'))
+        print('Save Model to ' + save_path)
+
+    def load_model(self, load_path, epoch, device="cpu"):
+        if not os.path.exists(load_path): return
+        self.load_state_dict(torch.load(os.path.join(load_path, 'model_' + str(epoch) + '.pth'), map_location=device))
+        print('Load Model from ' + load_path)
 
 
 class BernoulliDecoder(nn.Module):

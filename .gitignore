@@ -1,2 +1,6 @@
 datasets
 __pycache__
+/checkpoint/
+*.pt
+.vscode
+.ipynb_checkpoints
